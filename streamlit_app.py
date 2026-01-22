@@ -72,7 +72,7 @@ def outcome_shares(power: float, alpha: float, p_h1: float):
 
 def conditional_given_fail(shares: dict):
     """
-    Given unconditional shares TP/FP/TN/FN, compute P(H0|fail) and P(H1|fail)
+    Given unconditional shares TP/FP/TN/FN, compute P(H0|fail) and P(H1|fail),
     where "fail" == fail-to-reject (non-significant).
     """
     p_fail = shares["TN"] + shares["FN"]
@@ -85,7 +85,7 @@ def conditional_given_fail(shares: dict):
 # Plotting functions (return figures)
 # -----------------------------
 
-def fig_alpha_beta(mde: float, sd: float, n_per_group: int, alpha: float = 0.05, two_sided: bool = True):
+def fig_alpha_beta(mde: float, sd: float, n_per_group: int, alpha: float = 0.05, two_sided: bool = True, title: str = ""):
     stt = compute_alpha_beta_power(mde, sd, n_per_group, alpha, two_sided)
     se = stt["se"]
     crit_left = stt["crit_left"]
@@ -93,7 +93,6 @@ def fig_alpha_beta(mde: float, sd: float, n_per_group: int, alpha: float = 0.05,
     beta = stt["beta"]
     power = stt["power"]
 
-    # X range
     x_min = min(-4 * se, mde - 4 * se)
     x_max = max(4 * se, mde + 4 * se)
     x = np.linspace(x_min, x_max, 1000)
@@ -101,7 +100,7 @@ def fig_alpha_beta(mde: float, sd: float, n_per_group: int, alpha: float = 0.05,
     h0 = norm.pdf(x, loc=0, scale=se)
     h1 = norm.pdf(x, loc=mde, scale=se)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 4.5))
     ax.plot(x, h0, label="H₀: sampling dist (mean = 0)")
     ax.plot(x, h1, label=f"H₁: sampling dist (mean = {mde:g})")
 
@@ -124,15 +123,15 @@ def fig_alpha_beta(mde: float, sd: float, n_per_group: int, alpha: float = 0.05,
         ax.fill_between(xn, 0, norm.pdf(xn, mde, se), alpha=0.25, label="Type II error (β)")
         ax.axvline(crit_right, linestyle="--")
 
-    ax.text(0.02, 0.88, f"α = {alpha:.2%}", transform=ax.transAxes)
-    ax.text(0.02, 0.82, f"β = {beta:.2%}", transform=ax.transAxes)
-    ax.text(0.02, 0.75, f"Power = {power:.2%}", transform=ax.transAxes, fontsize=14, fontweight="bold")
-    ax.text(0.02, 0.69, f"SE(diff) = {se:.4g}", transform=ax.transAxes)
+    ax.text(0.02, 0.90, f"α = {alpha:.2%}", transform=ax.transAxes)
+    ax.text(0.02, 0.84, f"β = {beta:.2%}", transform=ax.transAxes)
+    ax.text(0.02, 0.77, f"Power = {power:.2%}", transform=ax.transAxes, fontsize=14, fontweight="bold")
+    ax.text(0.02, 0.70, f"SE(diff) = {se:.4g}", transform=ax.transAxes)
 
-    ax.set_title("How α and β arise from sampling distributions")
+    ax.set_title(title or "Sampling distributions (raw diff-in-means units)")
     ax.set_xlabel("Observed difference in sample means")
     ax.set_ylabel("Density")
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
 
     return fig, stt
@@ -165,7 +164,7 @@ def fig_outcomes_dashboard(mde: float, sd: float, n_per_group: int, alpha: float
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(alpha=0.2, axis="y")
 
-    # (2) Composition among rejects: TDR vs FDR
+    # (2) Composition among rejects
     ax = axes[1]
     ax.bar(["Reject H0"], [tdr], label=f"TDR: {tdr:.2%}")
     ax.bar(["Reject H0"], [fdr], bottom=[tdr], label=f"FDR: {fdr:.2%}")
@@ -192,8 +191,16 @@ def fig_outcomes_dashboard(mde: float, sd: float, n_per_group: int, alpha: float
     )
     plt.tight_layout(rect=[0, 0, 1, 0.88])
 
-    return fig, {"stats": stt, "shares": shares, "fdr": fdr, "tdr": tdr, "p_reject": p_reject, "p_fail": p_fail,
-                 "p_h0_fail": p_h0_fail, "p_h1_fail": p_h1_fail}
+    return fig, {
+        "stats": stt,
+        "shares": shares,
+        "fdr": fdr,
+        "tdr": tdr,
+        "p_reject": p_reject,
+        "p_fail": p_fail,
+        "p_h0_fail": p_h0_fail,
+        "p_h1_fail": p_h1_fail
+    }
 
 def fig_fdr_vs_n(mde: float, sd: float, alpha: float, two_sided: bool, p_h1: float, n_max: int, n_marker: int):
     ns = np.arange(20, n_max + 1, 20)
@@ -205,10 +212,10 @@ def fig_fdr_vs_n(mde: float, sd: float, alpha: float, two_sided: bool, p_h1: flo
         powers.append(stt["power"])
         fdrs.append(fdr_tdr_from_rates(stt["power"], alpha, p_h1)[0])
 
-    fig, ax1 = plt.subplots(figsize=(10, 5))
+    fig, ax1 = plt.subplots(figsize=(10, 4.5))
     ax1.plot(ns, fdrs, linewidth=2, label="FDR")
     ax1.set_xlabel("Sample size per group (n)")
-    ax1.set_ylabel("FDR (false discovery rate)")
+    ax1.set_ylabel("FDR")
     ax1.set_ylim(0, 1)
     ax1.grid(alpha=0.3)
 
@@ -217,15 +224,14 @@ def fig_fdr_vs_n(mde: float, sd: float, alpha: float, two_sided: bool, p_h1: flo
     ax2.set_ylabel("Power")
     ax2.set_ylim(0, 1)
 
-    # marker
     if n_marker is not None:
         stt_m = compute_alpha_beta_power(mde, sd, n_marker, alpha, two_sided)
-        fdr_m, tdr_m = fdr_tdr_from_rates(stt_m["power"], alpha, p_h1)
+        fdr_m, _ = fdr_tdr_from_rates(stt_m["power"], alpha, p_h1)
         ax1.scatter([n_marker], [fdr_m], zorder=5)
         ax1.annotate(
             f"n={n_marker}\nFDR={fdr_m:.2%}\npower={stt_m['power']:.2%}",
             xy=(n_marker, fdr_m),
-            xytext=(min(n_max, int(n_marker * 1.3)), min(0.95, fdr_m + 0.10)),
+            xytext=(min(n_max, int(n_marker * 1.25)), min(0.95, fdr_m + 0.12)),
             arrowprops=dict(arrowstyle="->"),
             fontsize=9
         )
@@ -244,9 +250,8 @@ st.set_page_config(page_title="Alpha/Beta + FDR Teaching Dashboard", layout="wid
 
 st.title("Experimentation error rates: α/β/power and false discoveries")
 
-tabs = st.tabs(["1) α/β distributions", "2) False discovery rate (FDR) outcomes"])
+tabs = st.tabs(["1) α/β distributions", "2) FDR outcomes + distributions"])
 
-# Shared sidebar controls (optional): you can also keep separate controls per tab.
 with st.sidebar:
     st.header("Global assumptions")
     two_sided = st.checkbox("Two-sided test", value=True)
@@ -255,35 +260,34 @@ with st.sidebar:
     sd = st.number_input("SD (per-user outcome)", value=0.20, format="%.6f")
 
 
-# ---- Tab 1: alpha/beta plot ----
+# ---- Tab 1 ----
 with tabs[0]:
     st.subheader("Sampling distributions and where α and β come from")
 
     colA, colB = st.columns([1, 2])
-
     with colA:
-        n1 = st.number_input("Sample size per group (n)", min_value=10, max_value=5_000_000, value=4000, step=50)
-
+        n1 = st.number_input("Sample size per group (n)", min_value=10, max_value=5_000_000, value=4000, step=50, key="n1")
         st.caption("Interpretation")
         st.write(
-            "This plot is in raw units (difference in sample means). "
-            "The dashed lines are the rejection thresholds implied by α. "
+            "Dashed lines are rejection thresholds implied by α. "
             "Shaded tails under H0 are α. Shaded non-rejection region under H1 is β. "
             "Power = 1 − β."
         )
 
     with colB:
-        fig, stats1 = fig_alpha_beta(mde=mde, sd=sd, n_per_group=int(n1), alpha=alpha, two_sided=two_sided)
-        st.pyplot(fig, clear_figure=True)
+        fig1, stats1 = fig_alpha_beta(mde=mde, sd=sd, n_per_group=int(n1), alpha=alpha, two_sided=two_sided,
+                                      title="How α and β arise from sampling distributions")
+        st.pyplot(fig1, clear_figure=True)
 
-        st.metric("Power", f"{stats1['power']:.2%}")
-        st.metric("Beta (β)", f"{stats1['beta']:.2%}")
-        st.metric("SE(diff)", f"{stats1['se']:.6g}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Power", f"{stats1['power']:.2%}")
+        c2.metric("Beta (β)", f"{stats1['beta']:.2%}")
+        c3.metric("SE(diff)", f"{stats1['se']:.6g}")
 
 
-# ---- Tab 2: FDR dashboard ----
+# ---- Tab 2 ----
 with tabs[1]:
-    st.subheader("Why low power inflates false discoveries among “wins” (FDR)")
+    st.subheader("FDR outcomes (and the underlying sampling distributions)")
 
     colL, colR = st.columns([1, 2])
 
@@ -300,18 +304,32 @@ with tabs[1]:
         )
 
     with colR:
-        fig2, out = fig_outcomes_dashboard(mde=mde, sd=sd, n_per_group=int(n2), alpha=alpha, two_sided=two_sided, p_h1=p_h1)
-        st.pyplot(fig2, clear_figure=True)
+        # Include sampling distribution plot in Tab 2
+        fig_sd, stats2 = fig_alpha_beta(
+            mde=mde, sd=sd, n_per_group=int(n2), alpha=alpha, two_sided=two_sided,
+            title="Sampling distributions for current FDR settings"
+        )
+        st.pyplot(fig_sd, clear_figure=True)
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Power", f"{out['stats']['power']:.2%}")
-        c2.metric("FDR = P(H0 | reject)", f"{out['fdr']:.2%}")
-        c3.metric("TDR = P(H1 | reject)", f"{out['tdr']:.2%}")
-        c4.metric("P(reject)", f"{out['p_reject']:.2%}")
+        # Outcomes dashboard
+        fig_dash, out = fig_outcomes_dashboard(
+            mde=mde, sd=sd, n_per_group=int(n2), alpha=alpha, two_sided=two_sided, p_h1=p_h1
+        )
+        st.pyplot(fig_dash, clear_figure=True)
 
-        fig3 = fig_fdr_vs_n(mde=mde, sd=sd, alpha=alpha, two_sided=two_sided, p_h1=p_h1,
-                            n_max=int(n_max), n_marker=int(n2))
-        st.pyplot(fig3, clear_figure=True)
+        # Metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Power", f"{out['stats']['power']:.2%}")
+        m2.metric("FDR = P(H0 | reject)", f"{out['fdr']:.2%}")
+        m3.metric("TDR = P(H1 | reject)", f"{out['tdr']:.2%}")
+        m4.metric("P(reject)", f"{out['p_reject']:.2%}")
 
-        st.write("Outcome shares (across all experiments; sum to 1):")
+        # FDR curve
+        fig_curve = fig_fdr_vs_n(
+            mde=mde, sd=sd, alpha=alpha, two_sided=two_sided, p_h1=p_h1,
+            n_max=int(n_max), n_marker=int(n2)
+        )
+        st.pyplot(fig_curve, clear_figure=True)
+
+        st.write("Outcome shares across all experiments (sum to 1):")
         st.json({k: float(f"{v:.6f}") for k, v in out["shares"].items()})
