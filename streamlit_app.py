@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 from scipy.stats import norm
+import pandas as pd
 
 
 # -----------------------------
@@ -254,6 +255,7 @@ tabs = st.tabs(["1) α/β distributions", "2) FDR outcomes + distributions"])
 
 with st.sidebar:
     st.header("Global assumptions")
+    n_per_group = st.number_input("Sample size per group (n)", min_value=10, max_value=5_000_000, value=4000, step=50)
     two_sided = st.checkbox("Two-sided test", value=True)
     alpha = st.slider("Alpha (α)", min_value=0.001, max_value=0.20, value=0.05, step=0.001)
     mde = st.number_input("MDE (effect under H1)", value=0.02, format="%.6f")
@@ -264,25 +266,23 @@ with st.sidebar:
 with tabs[0]:
     st.subheader("Sampling distributions and where α and β come from")
 
-    colA, colB = st.columns([1, 2])
-    with colA:
-        n1 = st.number_input("Sample size per group (n)", min_value=10, max_value=5_000_000, value=4000, step=50, key="n1")
-        st.caption("Interpretation")
-        st.write(
-            "Dashed lines are rejection thresholds implied by α. "
-            "Shaded tails under H0 are α. Shaded non-rejection region under H1 is β. "
-            "Power = 1 − β."
-        )
+    fig1, stats1 = fig_alpha_beta(
+        mde=mde, sd=sd, n_per_group=int(n_per_group), alpha=alpha, two_sided=two_sided,
+        title="How α and β arise from sampling distributions"
+    )
+    st.pyplot(fig1, clear_figure=True)
 
-    with colB:
-        fig1, stats1 = fig_alpha_beta(mde=mde, sd=sd, n_per_group=int(n1), alpha=alpha, two_sided=two_sided,
-                                      title="How α and β arise from sampling distributions")
-        st.pyplot(fig1, clear_figure=True)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Power", f"{stats1['power']:.2%}")
+    c2.metric("Beta (β)", f"{stats1['beta']:.2%}")
+    c3.metric("SE(diff)", f"{stats1['se']:.6g}")
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Power", f"{stats1['power']:.2%}")
-        c2.metric("Beta (β)", f"{stats1['beta']:.2%}")
-        c3.metric("SE(diff)", f"{stats1['se']:.6g}")
+    st.caption("Interpretation")
+    st.write(
+        "Dashed lines are rejection thresholds implied by α. "
+        "Shaded tails under H0 are α. Shaded non-rejection region under H1 is β. "
+        "Power = 1 − β."
+    )
 
 
 # ---- Tab 2 ----
@@ -292,7 +292,6 @@ with tabs[1]:
     colL, colR = st.columns([1, 2])
 
     with colL:
-        n2 = st.number_input("Sample size per group (n)", min_value=10, max_value=5_000_000, value=2000, step=50, key="n2")
         p_h1 = st.slider("P(H1 true) base rate (π1)", min_value=0.0, max_value=1.0, value=0.10, step=0.01)
         n_max = st.slider("Max n for FDR curve", min_value=200, max_value=50_000, value=20_000, step=200)
 
@@ -304,16 +303,16 @@ with tabs[1]:
         )
 
     with colR:
-        # Include sampling distribution plot in Tab 2
+        # Sampling distribution for current settings
         fig_sd, stats2 = fig_alpha_beta(
-            mde=mde, sd=sd, n_per_group=int(n2), alpha=alpha, two_sided=two_sided,
+            mde=mde, sd=sd, n_per_group=int(n_per_group), alpha=alpha, two_sided=two_sided,
             title="Sampling distributions for current FDR settings"
         )
         st.pyplot(fig_sd, clear_figure=True)
 
         # Outcomes dashboard
         fig_dash, out = fig_outcomes_dashboard(
-            mde=mde, sd=sd, n_per_group=int(n2), alpha=alpha, two_sided=two_sided, p_h1=p_h1
+            mde=mde, sd=sd, n_per_group=int(n_per_group), alpha=alpha, two_sided=two_sided, p_h1=p_h1
         )
         st.pyplot(fig_dash, clear_figure=True)
 
@@ -324,12 +323,27 @@ with tabs[1]:
         m3.metric("TDR = P(H1 | reject)", f"{out['tdr']:.2%}")
         m4.metric("P(reject)", f"{out['p_reject']:.2%}")
 
-        # FDR curve
+        # FDR curve (marker uses the same global n)
         fig_curve = fig_fdr_vs_n(
             mde=mde, sd=sd, alpha=alpha, two_sided=two_sided, p_h1=p_h1,
-            n_max=int(n_max), n_marker=int(n2)
+            n_max=int(n_max), n_marker=int(n_per_group)
         )
         st.pyplot(fig_curve, clear_figure=True)
 
+        # 2x2 table for unconditional outcome shares
+        shares = out["shares"]
+        shares_table = pd.DataFrame(
+            {
+                "Reject H0": {
+                    "H1 true": shares["TP"],  # True discovery share
+                    "H0 true": shares["FP"],  # False discovery share
+                },
+                "Fail to Reject H0": {
+                    "H1 true": shares["FN"],  # Missed discovery share
+                    "H0 true": shares["TN"],  # Correct null share
+                },
+            }
+        )
+
         st.write("Outcome shares across all experiments (sum to 1):")
-        st.json({k: float(f"{v:.6f}") for k, v in out["shares"].items()})
+        st.dataframe(shares_table.style.format("{:.4f}"))
